@@ -34,10 +34,11 @@
     if (/failed to fetch|networkerror|load failed/i.test(msg)) {
       return "The diary could not be reached. Check the connection and try again.";
     }
-    if (/invalid login/i.test(msg)) return "Email or password is not recognised.";
-    if (/already registered|already been registered/i.test(msg)) {
-      return "An account with that email already exists. Log in instead.";
+    if (/invalid login/i.test(msg)) return "Username or password is not recognised.";
+    if (/already registered|already been registered|username is reserved|could not be registered/i.test(msg)) {
+      return "That username is already taken. Choose another, or log in.";
     }
+    if (/3 to 30 letters/i.test(msg)) return "Use 3 to 30 letters and numbers, starting with a letter.";
     if (/row-level security|permission denied/i.test(msg)) return "You do not have permission to do that.";
     if (/future months/i.test(msg)) return "Future months are not open yet.";
     if (/jwt|not authenticated|session/i.test(msg) && /invalid|expired|ended/i.test(msg)) {
@@ -101,9 +102,35 @@
     }).format(new Date(iso));
   }
 
+  var STAFF_USERNAME = "ittstaff";
+  var STAFF_EMAIL = "ittstaff@staff.itt-diary.invalid";
+
+  function normaliseUsername(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function usernameProblem(username) {
+    if (!/^[a-z][a-z0-9]{2,29}$/.test(username)) {
+      return "Use 3 to 30 letters and numbers, starting with a letter.";
+    }
+    if (username === STAFF_USERNAME) return "That username is reserved.";
+    return "";
+  }
+
+  function loginEmailFor(username, staffMode) {
+    if (staffMode) return username === STAFF_USERNAME ? STAFF_EMAIL : "";
+    if (usernameProblem(username)) return "";
+    return username + "@trainee.itt-diary.invalid";
+  }
+
+  function editorName(name) {
+    if (!name || name === "New account" || name === "Unknown") return "Staff";
+    return name;
+  }
+
   function editedLine(comment) {
     if (!comment || !comment.last_edited_at) return "Not yet edited";
-    return "Last edited by " + (comment.last_edited_name || "Unknown") + " \u00b7 " + formatWhen(comment.last_edited_at);
+    return "Last edited by " + editorName(comment.last_edited_name) + " \u00b7 " + formatWhen(comment.last_edited_at);
   }
 
   function sectionName(id) {
@@ -130,9 +157,12 @@
       return;
     }
     bar.hidden = false;
+    if (state.me.is_staff) {
+      $("sessionWho").textContent = editorName(state.me.full_name);
+      return;
+    }
     var bits = [state.me.full_name];
-    if (state.me.is_staff) bits.push("Staff");
-    else if (sectionName(state.me.section_id)) bits.push(sectionName(state.me.section_id));
+    if (sectionName(state.me.section_id)) bits.push(sectionName(state.me.section_id));
     $("sessionWho").textContent = bits.join(" \u00b7 ");
   }
 
@@ -181,7 +211,7 @@
   async function loadMe() {
     var result = await state.client
       .from("profiles")
-      .select("id, full_name, rank, section_id, instrument, email, is_staff")
+      .select("id, full_name, rank, section_id, instrument, username, is_staff")
       .eq("id", state.session.user.id)
       .single();
     if (result.error) throw result.error;
@@ -314,10 +344,12 @@
 
   async function showLogin(staff) {
     showError($("loginError"), "");
+    $("loginForm").dataset.mode = staff ? "staff" : "trainee";
     $("loginHeading").textContent = staff ? "Staff log in" : "Log in";
     $("loginLead").textContent = staff
-      ? "Use the account created for you. Staff registration is not available."
-      : "Trainees and staff sign in with the email and password for this diary.";
+      ? "Use the shared staff username and password. Staff registration is not available."
+      : "Sign in with your username and password.";
+    $("loginUsername").required = true;
     $("loginRegisterWrap").hidden = staff;
     $("loginStaffWrap").hidden = staff;
     showView("viewLogin");
@@ -349,7 +381,7 @@
     await loadSections();
     var result = await state.client
       .from("profiles")
-      .select("id, full_name, rank, section_id, instrument, email, is_staff, sections(name)")
+      .select("id, full_name, rank, section_id, instrument, username, is_staff, sections(name)")
       .eq("id", traineeId)
       .single();
     if (result.error) throw result.error;
@@ -371,10 +403,18 @@
     $("backRow").hidden = !staffView;
     $("pdfButton").hidden = !state.me.is_staff;
     $("deleteTraineeButton").hidden = !staffView;
+    $("passwordPanel").hidden = !staffView;
+    $("passwordNote").textContent = staffView
+      ? "This replaces the password for " + (result.data.username || "this trainee") + ". The username stays the same."
+      : "";
+    $("newPassword").value = "";
+    $("newPassword2").value = "";
+    $("passwordStatus").textContent = "";
+    showError($("passwordError"), "");
     $("detailsSummary").textContent = staffView ? "Edit trainee details" : "Your details";
     $("editorNote").hidden = false;
     $("editorNote").textContent = state.me.is_staff
-      ? "Any member of staff can write in the four staff boxes. The Trainee box belongs to the trainee. Your name is stamped when you save."
+      ? "Any member of staff can write in the four staff boxes. The Trainee box belongs to the trainee. Saving stamps the shared staff name."
       : "You can read every box. Only the Trainee box is yours to write.";
     $("diaryHeading").textContent = staffView ? "Practice diary" : "Your practice diary";
     paintIdentity();
@@ -388,7 +428,7 @@
   function paintIdentity() {
     var trainee = state.diary.trainee;
     var section = (trainee.sections && trainee.sections.name) || sectionName(trainee.section_id) || "No section";
-    $("diaryIdentity").textContent = [personLine(trainee), section, trainee.instrument].filter(Boolean).join(" \u00b7 ");
+    $("diaryIdentity").textContent = [personLine(trainee), trainee.username, section, trainee.instrument].filter(Boolean).join(" \u00b7 ");
   }
 
   function paintDetailsForm() {
@@ -397,8 +437,8 @@
     $("detailRank").value = trainee.rank || "";
     $("detailInstrument").value = trainee.instrument || "";
     fillSelect($("detailSection"), { selected: trainee.section_id || "" });
-    $("detailEmail").textContent = trainee.email
-      ? "Email " + trainee.email + " is the login and is not changed here."
+    $("detailUsername").textContent = trainee.username
+      ? "Username " + trainee.username + " is the login and is not changed here."
       : "";
     $("detailsStatus").textContent = "";
     showError($("detailsError"), "");
@@ -583,11 +623,11 @@
     fillSelect($("sectionFilter"), { blank: "All sections", selected: $("sectionFilter").value });
     $("accountName").value = state.me.full_name === "New account" ? "" : state.me.full_name;
     $("accountRank").value = state.me.rank || "";
-    $("accountEmail").textContent = state.me.email ? "Signed in as " + state.me.email + "." : "";
+    $("accountEmail").textContent = "This login is shared. Diaries show this name on staff comments. Set it to ITT Staff.";
     if (state.me.full_name === "New account") $("accountPanel").open = true;
     var result = await state.client
       .from("profiles")
-      .select("id, full_name, rank, section_id, instrument, email, sections(name, sort_order)")
+      .select("id, full_name, rank, section_id, instrument, username, sections(name, sort_order)")
       .eq("is_staff", false)
       .order("full_name");
     if (result.error) throw result.error;
@@ -601,7 +641,8 @@
     var query = $("search").value.trim().toLowerCase();
     var sectionId = $("sectionFilter").value;
     var filtered = state.trainees.filter(function (trainee) {
-      var nameOk = trainee.full_name.toLowerCase().indexOf(query) !== -1;
+      var nameOk = trainee.full_name.toLowerCase().indexOf(query) !== -1
+        || String(trainee.username || "").indexOf(query) !== -1;
       var sectionOk = !sectionId || trainee.section_id === sectionId;
       return nameOk && sectionOk;
     });
@@ -657,7 +698,7 @@
         var meta = document.createElement("span");
         meta.className = "trainee-meta";
         var section = (trainee.sections && trainee.sections.name) || sectionName(trainee.section_id);
-        meta.textContent = [section, trainee.instrument].filter(Boolean).join(" \u00b7 ");
+        meta.textContent = [trainee.username, section, trainee.instrument].filter(Boolean).join(" \u00b7 ");
         button.append(name, meta);
         button.addEventListener("click", function () {
           location.hash = "#staff/" + trainee.id;
@@ -803,19 +844,57 @@
       location.hash = "#login";
     });
 
+    $("passwordForm").addEventListener("submit", async function (event) {
+      event.preventDefault();
+      showError($("passwordError"), "");
+      var password = $("newPassword").value;
+      var again = $("newPassword2").value;
+      if (password !== again) {
+        showError($("passwordError"), "The passwords do not match.");
+        return;
+      }
+      if (password.length < 8) {
+        showError($("passwordError"), "Use a password of at least 8 characters.");
+        return;
+      }
+      var button = $("passwordSubmit");
+      button.disabled = true;
+      $("passwordStatus").textContent = "Saving\u2026";
+      var result = await state.client.rpc("set_trainee_password", {
+        p_trainee: state.diary.trainee.id,
+        p_password: password
+      });
+      button.disabled = false;
+      $("newPassword").value = "";
+      $("newPassword2").value = "";
+      if (result.error) {
+        $("passwordStatus").textContent = "";
+        showError($("passwordError"), friendlyError(result.error));
+        return;
+      }
+      $("passwordStatus").textContent = "Password saved. The trainee signs in with their username and this password.";
+    });
+
     $("loginForm").addEventListener("submit", async function (event) {
       event.preventDefault();
       showError($("loginError"), "");
       var button = $("loginSubmit");
+      var staffMode = $("loginForm").dataset.mode === "staff";
+      var email = loginEmailFor(normaliseUsername($("loginUsername").value), staffMode);
+      if (!email) {
+        showError($("loginError"), "Username or password is not recognised.");
+        $("loginPassword").value = "";
+        return;
+      }
       button.disabled = true;
       var result = await state.client.auth.signInWithPassword({
-        email: $("loginEmail").value.trim(),
+        email: email,
         password: $("loginPassword").value
       });
       button.disabled = false;
       $("loginPassword").value = "";
       if (result.error) {
-        showError($("loginError"), friendlyError(result.error));
+        showError($("loginError"), "Username or password is not recognised.");
         return;
       }
       state.session = result.data.session;
@@ -829,6 +908,12 @@
       $("registerNotice").hidden = true;
       var password = $("registerPassword").value;
       var again = $("registerPassword2").value;
+      var username = normaliseUsername($("registerUsername").value);
+      var nameProblem = usernameProblem(username);
+      if (nameProblem) {
+        showError($("registerError"), nameProblem);
+        return;
+      }
       if (password !== again) {
         showError($("registerError"), "The passwords do not match.");
         return;
@@ -840,10 +925,11 @@
       var button = $("registerSubmit");
       button.disabled = true;
       var result = await state.client.auth.signUp({
-        email: $("registerEmail").value.trim(),
+        email: username + "@trainee.itt-diary.invalid",
         password: password,
         options: {
           data: {
+            username: username,
             full_name: $("registerName").value.trim(),
             rank: $("registerRank").value.trim(),
             section_id: $("registerSection").value,
@@ -860,7 +946,7 @@
       }
       if (!result.data.session) {
         $("registerNotice").hidden = false;
-        $("registerNotice").textContent = "Check your email to confirm the account, then log in.";
+        $("registerNotice").textContent = "The account was created. Log in with your username. These usernames cannot receive email, so confirmation mail must be turned off.";
         return;
       }
       state.session = result.data.session;
@@ -882,7 +968,7 @@
         .from("profiles")
         .update(payload)
         .eq("id", trainee.id)
-        .select("id, full_name, rank, section_id, instrument, email, is_staff, sections(name)")
+        .select("id, full_name, rank, section_id, instrument, username, is_staff, sections(name)")
         .single();
       if (result.error) {
         showError($("detailsError"), friendlyError(result.error));
@@ -904,7 +990,7 @@
           rank: $("accountRank").value.trim()
         })
         .eq("id", state.me.id)
-        .select("id, full_name, rank, section_id, instrument, email, is_staff")
+        .select("id, full_name, rank, section_id, instrument, username, is_staff")
         .single();
       if (result.error) {
         $("accountStatus").textContent = friendlyError(result.error);

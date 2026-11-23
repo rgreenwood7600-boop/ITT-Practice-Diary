@@ -4,8 +4,9 @@
 
 insert into auth.users (email, raw_user_meta_data)
 values (
-  'alex.river@example.test',
+  'alexriver@trainee.itt-diary.invalid',
   jsonb_build_object(
+    'username', 'AlexRiver',
     'full_name', 'Alex River',
     'rank', 'Musn',
     'instrument', 'Cornet',
@@ -16,8 +17,9 @@ values (
 
 insert into auth.users (email, raw_user_meta_data)
 values (
-  'sam.quinn@example.test',
+  'samquinn@trainee.itt-diary.invalid',
   jsonb_build_object(
+    'username', 'samquinn',
     'full_name', 'Sam Quinn',
     'rank', 'Musn',
     'instrument', 'Clarinet',
@@ -43,16 +45,20 @@ begin
     raise exception 'Expected the three seeded sections, found %', sections;
   end if;
 
-  select is_staff into alex_staff from public.profiles where email = 'alex.river@example.test';
+  select is_staff into alex_staff from public.profiles where email = 'alexriver@trainee.itt-diary.invalid';
   if alex_staff then
     raise exception 'Registration metadata was able to set is_staff';
+  end if;
+  if (select username from public.profiles where email = 'alexriver@trainee.itt-diary.invalid')
+     is distinct from 'alexriver' then
+    raise exception 'Username was not stored in lower case';
   end if;
 
   select count(*) into alex_comments
   from public.diary_comments c
   join public.diary_months m on m.id = c.diary_month_id
   join public.profiles p on p.id = m.trainee_id
-  where p.email = 'alex.river@example.test';
+  where p.email = 'alexriver@trainee.itt-diary.invalid';
   if alex_comments <> 5 then
     raise exception 'Registration should open the current month with 5 boxes, found %', alex_comments;
   end if;
@@ -66,8 +72,54 @@ begin
   end if;
 end $$;
 
-select set_config('itt.trainee_a', (select id::text from public.profiles where email = 'alex.river@example.test'), false);
-select set_config('itt.trainee_b', (select id::text from public.profiles where email = 'sam.quinn@example.test'), false);
+do $$
+begin
+  insert into auth.users (email, raw_user_meta_data)
+  values (
+    'ab@trainee.itt-diary.invalid',
+    jsonb_build_object(
+      'username', 'ab',
+      'full_name', 'Too Short',
+      'rank', 'Musn',
+      'instrument', 'Horn',
+      'section_id', (select id::text from public.sections where name = 'Section 1')
+    )
+  );
+  raise exception 'A short username was accepted';
+exception
+  when others then
+    if sqlerrm ilike '%3 to 30%' then
+      null;
+    else
+      raise;
+    end if;
+end $$;
+
+do $$
+begin
+  insert into auth.users (email, raw_user_meta_data)
+  values (
+    'ittstaff@trainee.itt-diary.invalid',
+    jsonb_build_object(
+      'username', 'ittstaff',
+      'full_name', 'Reserved Name',
+      'rank', 'Musn',
+      'instrument', 'Horn',
+      'section_id', (select id::text from public.sections where name = 'Section 1')
+    )
+  );
+  raise exception 'The reserved username was accepted';
+exception
+  when others then
+    if sqlerrm ilike '%reserved%' then
+      null;
+    else
+      raise;
+    end if;
+end $$;
+
+select set_config('itt.trainee_a', (select id::text from public.profiles where email = 'alexriver@trainee.itt-diary.invalid'), false);
+select set_config('itt.trainee_b', (select id::text from public.profiles where email = 'samquinn@trainee.itt-diary.invalid'), false);
 select set_config('itt.staff', (select id::text from public.profiles where email = 'ben.james@example.test'), false);
 select set_config('itt.month_a', (
   select m.id::text
@@ -252,6 +304,19 @@ end $$;
 
 do $$
 begin
+  perform public.set_trainee_password(current_setting('itt.trainee_b')::uuid, 'New-password-1');
+  raise exception 'Trainee A set another password';
+exception
+  when others then
+    if sqlerrm ilike '%Only staff%' then
+      null;
+    else
+      raise;
+    end if;
+end $$;
+
+do $$
+begin
   perform public.delete_trainee(current_setting('itt.trainee_b')::uuid);
   raise exception 'Trainee A deleted trainee B';
 exception
@@ -394,13 +459,15 @@ exception
     end if;
 end $$;
 
+select public.set_trainee_password(current_setting('itt.trainee_a')::uuid, 'New-password-1');
+
 select public.delete_trainee(current_setting('itt.trainee_b')::uuid);
 
 do $$
 declare
   n int;
 begin
-  select count(*) into n from public.profiles where email = 'sam.quinn@example.test';
+  select count(*) into n from public.profiles where email = 'samquinn@trainee.itt-diary.invalid';
   if n <> 0 then
     raise exception 'Sam Quinn is still listed after delete_trainee';
   end if;
@@ -437,11 +504,11 @@ do $$
 declare
   n int;
 begin
-  select count(*) into n from public.profiles where email = 'sam.quinn@example.test';
+  select count(*) into n from public.profiles where email = 'samquinn@trainee.itt-diary.invalid';
   if n <> 0 then
     raise exception 'Sam profile survived delete_trainee';
   end if;
-  if exists (select 1 from auth.users where email = 'sam.quinn@example.test') then
+  if exists (select 1 from auth.users where email = 'samquinn@trainee.itt-diary.invalid') then
     raise exception 'Sam login survived delete_trainee';
   end if;
   if exists (
@@ -453,9 +520,16 @@ begin
   end if;
   if not exists (
     select 1 from public.profiles
-    where email = 'alex.river@example.test' and rank = 'LCpl' and is_staff = false
+    where email = 'alexriver@trainee.itt-diary.invalid' and rank = 'LCpl' and is_staff = false
   ) then
     raise exception 'Alex was changed by the delete or the staff flag';
+  end if;
+  if not exists (
+    select 1 from auth.users
+    where id = current_setting('itt.trainee_a')::uuid
+      and encrypted_password = extensions.crypt('New-password-1', encrypted_password)
+  ) then
+    raise exception 'Staff password reset did not store a matching bcrypt hash';
   end if;
 end $$;
 

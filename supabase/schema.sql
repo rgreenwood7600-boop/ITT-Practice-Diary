@@ -30,13 +30,17 @@ create table if not exists public.profiles (
   section_id uuid references public.sections (id) on delete restrict,
   instrument text not null default '',
   email text not null default '',
+  username text,
   is_staff boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint profiles_name_len check (char_length(full_name) between 1 and 120),
   constraint profiles_rank_len check (char_length(rank) <= 40),
   constraint profiles_instrument_len check (char_length(instrument) <= 80),
-  constraint profiles_email_len check (char_length(email) <= 320)
+  constraint profiles_email_len check (char_length(email) <= 320),
+  constraint profiles_username_format check (
+    username is null or username ~ '^[a-z][a-z0-9]{2,29}$'
+  )
 );
 
 create table if not exists public.diary_months (
@@ -82,6 +86,25 @@ create index if not exists profiles_staff_idx on public.profiles (is_staff);
 create unique index if not exists profiles_email_lower_idx
   on public.profiles (lower(email))
   where email <> '';
+
+alter table public.profiles add column if not exists username text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'profiles_username_format'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_username_format
+      check (username is null or username ~ '^[a-z][a-z0-9]{2,29}$');
+  end if;
+end $$;
+
+create unique index if not exists profiles_username_lower_idx
+  on public.profiles (lower(username))
+  where username is not null;
 create unique index if not exists sections_name_lower_idx
   on public.sections (lower(name));
 
@@ -212,6 +235,59 @@ revoke all on function public.delete_trainee(uuid) from public, anon, authentica
 grant execute on function public.ensure_diary_month(uuid, integer, integer) to authenticated;
 grant execute on function public.delete_trainee(uuid) to authenticated;
 
+-- pgcrypto supplies bcrypt for set_trainee_password. Supabase usually already
+-- has it in the extensions schema; a database that does not gets it there.
+do $$
+begin
+  if not exists (select 1 from pg_extension where extname = 'pgcrypto') then
+    create schema if not exists extensions;
+    create extension pgcrypto with schema extensions;
+  end if;
+end $$;
+
+create or replace function public.set_trainee_password(p_trainee uuid, p_password text)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  if auth.uid() is null or not private.is_staff() then
+    raise exception 'Only staff can set a trainee password';
+  end if;
+
+  if p_trainee is null or p_trainee = auth.uid() then
+    raise exception 'You cannot change this password here';
+  end if;
+
+  if p_password is null
+     or char_length(p_password) < 8
+     or char_length(p_password) > 72 then
+    raise exception 'Use a password of 8 to 72 characters';
+  end if;
+
+  if not exists (
+    select 1
+    from public.profiles p
+    where p.id = p_trainee
+      and p.is_staff = false
+  ) then
+    raise exception 'Trainee not found';
+  end if;
+
+  update auth.users
+  set encrypted_password = crypt(p_password, gen_salt('bf', 10))
+  where id = p_trainee;
+
+  if not found then
+    raise exception 'Trainee not found';
+  end if;
+end;
+$$;
+
+revoke all on function public.set_trainee_password(uuid, text) from public, anon, authenticated;
+grant execute on function public.set_trainee_password(uuid, text) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Triggers
 -- ---------------------------------------------------------------------------
@@ -239,6 +315,7 @@ declare
   v_name text := nullif(trim(meta->>'full_name'), '');
   v_rank text := coalesce(trim(meta->>'rank'), '');
   v_instrument text := coalesce(trim(meta->>'instrument'), '');
+  v_username text := nullif(lower(trim(coalesce(meta->>'username', ''))), '');
   v_section uuid;
   v_section_text text := nullif(trim(meta->>'section_id'), '');
   v_now timestamp := timezone('Europe/London', now());
@@ -247,8 +324,8 @@ begin
     v_section := v_section_text::uuid;
   end if;
 
-  -- Self-registration always sends a name. Accounts added in the Auth
-  -- dashboard do not, and stay without a diary until a person registers.
+  -- Self-registration always sends a name and a username. Accounts added in
+  -- the Auth dashboard do not, and stay without a diary until promoted.
   -- is_staff in the metadata is ignored. Staff are promoted with SQL.
   if v_name is not null then
     if char_length(v_name) > 120 then
@@ -259,13 +336,22 @@ begin
        or v_section is null then
       raise exception 'Name, rank, section and instrument are required';
     end if;
+    if v_username is null or v_username !~ '^[a-z][a-z0-9]{2,29}$' then
+      raise exception 'Use 3 to 30 letters and numbers, starting with a letter';
+    end if;
+    if v_username = 'ittstaff' then
+      raise exception 'That username is reserved';
+    end if;
+    if lower(coalesce(new.email, '')) is distinct from v_username || '@trainee.itt-diary.invalid' then
+      raise exception 'The username could not be registered';
+    end if;
     if not exists (select 1 from public.sections s where s.id = v_section) then
       raise exception 'Choose a section from the list';
     end if;
   end if;
 
   insert into public.profiles (
-    id, full_name, rank, section_id, instrument, email, is_staff
+    id, full_name, rank, section_id, instrument, email, username, is_staff
   )
   values (
     new.id,
@@ -274,6 +360,7 @@ begin
     v_section,
     v_instrument,
     coalesce(new.email, ''),
+    v_username,
     false
   );
 
@@ -300,6 +387,11 @@ begin
   new.full_name := trim(coalesce(new.full_name, ''));
   new.rank := trim(coalesce(new.rank, ''));
   new.instrument := trim(coalesce(new.instrument, ''));
+  new.username := nullif(lower(trim(coalesce(new.username, ''))), '');
+
+  if new.username is not null and new.username !~ '^[a-z][a-z0-9]{2,29}$' then
+    raise exception 'Use 3 to 30 letters and numbers, starting with a letter';
+  end if;
 
   if char_length(new.full_name) < 1 or char_length(new.full_name) > 120 then
     raise exception 'Enter a name of up to 120 characters';
@@ -326,6 +418,9 @@ begin
     end if;
     if new.email is distinct from old.email then
       raise exception 'Email is managed by the account and cannot be edited here';
+    end if;
+    if new.username is distinct from old.username then
+      raise exception 'The username cannot be changed here';
     end if;
     if new.id is distinct from old.id then
       raise exception 'The account id cannot be changed';
