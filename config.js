@@ -9,6 +9,6 @@
 // in the site, or in git. That key bypasses Row Level Security.
 
 window.ITT_CONFIG = {
-  supabaseUrl: "https://YOUR_PROJECT_REF.supabase.co",
-  supabaseAnonKey: "YOUR_SUPABASE_ANON_KEY"
+  supabaseUrl: "https://nsiekkxcpwvdjbkuiibw.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zaWVra3hjcHd2ZGpia3VpaWJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0Mzc3NzQsImV4cCI6MjExMTAxMzc3NH0.-hhHX-sxf3aYnAgyzYMOGinY1TQ1nabD7gxpOSsAFko"
 };
