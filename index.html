@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Monthly practice diary for Initial Trade Training at the Royal Military School of Music, Portsmouth.">
+<meta name="theme-color" content="#002147">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'">
+<title>RMSM ITT Practice Diary</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23002147'/%3E%3Crect x='6' y='23' width='20' height='3' fill='%23c4a35a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="sheet">
+
+<header class="sheet-header">
+<p class="eyebrow">The Royal Military School of Music</p>
+<h1>ITT Practice Diary</h1>
+<p class="subtitle">Initial Trade Training · Portsmouth</p>
+</header>
+
+<div class="session-bar" id="sessionBar" hidden>
+<p id="sessionWho"></p>
+<button type="button" id="logoutButton" class="secondary">Log out</button>
+</div>
+
+<main id="main" tabindex="-1">
+
+<p id="booting">Loading the diary…</p>
+
+<section class="view" id="viewSetup" data-title="Setup" hidden>
+<h2>Connect the diary</h2>
+<p>This copy of the diary is not connected to Supabase yet. In <code>config.js</code>, set the project URL and the anon public key. Do not put the service role key in that file.</p>
+<p>The steps are in <code>SETUP.md</code> in the project repository: run <code>supabase/schema.sql</code>, then create a staff account from the Supabase dashboard and mark it with SQL.</p>
+</section>
+
+<section class="view" id="viewLanding" data-title="" hidden>
+<h2>Monthly practice diary</h2>
+<p class="lead">Each trainee has one diary. Each month has a comment from the instrumental professor, the academic bandmaster, the section commander, the senior instructor, and the trainee.</p>
+<div class="actions landing-actions">
+<a class="button" href="#register">Register as a trainee</a>
+<a class="button secondary" href="#login">Trainee log in</a>
+</div>
+<div class="staff-entry">
+<h3>Staff</h3>
+<p>Accounts are created by the school. Staff cannot register themselves.</p>
+<a class="button secondary" href="#staff-login">Staff log in</a>
+</div>
+</section>
+
+<section class="view" id="viewLogin" data-title="Log in" hidden>
+<h2 id="loginHeading">Log in</h2>
+<p id="loginLead" class="lead">Trainees and staff sign in with the email and password for this diary.</p>
+<p id="loginError" class="error" role="alert" hidden></p>
+<form id="loginForm">
+<div class="field">
+<label for="loginEmail">Email</label>
+<input id="loginEmail" name="email" type="email" autocomplete="username" maxlength="320" required>
+</div>
+<div class="field">
+<label for="loginPassword">Password</label>
+<input id="loginPassword" name="password" type="password" autocomplete="current-password" minlength="8" maxlength="72" required>
+</div>
+<div class="actions">
+<button type="submit" id="loginSubmit">Log in</button>
+</div>
+</form>
+<p class="switch-link" id="loginRegisterWrap"><a href="#register">Register as a trainee</a></p>
+<p class="switch-link" id="loginStaffWrap"><a href="#staff-login">Staff log in</a></p>
+<p class="switch-link"><a href="#">Back</a></p>
+</section>
+
+<section class="view" id="viewRegister" data-title="Register" hidden>
+<h2>Register as a trainee</h2>
+<p class="lead">Registration is for trainees. It opens your own diary. Staff accounts are created separately and cannot be registered here.</p>
+<div class="privacy">
+<p>The diary stores your name, rank, section, instrument and email address, and the comments written each month. It does not ask for a service number. You can read your own diary. ITT staff can read it, write the staff comments, and update your details. There are no analytics on this page. The record is for Initial Trade Training at the Royal Military School of Music.</p>
+</div>
+<p id="registerError" class="error" role="alert" hidden></p>
+<p id="registerNotice" class="notice" role="status" hidden></p>
+<form id="registerForm">
+<div class="details-grid">
+<div class="field">
+<label for="registerName">Full name</label>
+<input id="registerName" name="full_name" type="text" autocomplete="name" maxlength="120" required>
+</div>
+<div class="field">
+<label for="registerRank">Rank</label>
+<input id="registerRank" name="rank" type="text" autocomplete="off" maxlength="40" required>
+</div>
+<div class="field">
+<label for="registerSection">Section</label>
+<select id="registerSection" name="section_id" required></select>
+</div>
+<div class="field">
+<label for="registerInstrument">Instrument</label>
+<input id="registerInstrument" name="instrument" type="text" autocomplete="off" maxlength="80" required>
+</div>
+<div class="field">
+<label for="registerEmail">Email</label>
+<input id="registerEmail" name="email" type="email" autocomplete="email" maxlength="320" required>
+</div>
+<div class="field">
+<label for="registerPassword">Password</label>
+<input id="registerPassword" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required>
+</div>
+<div class="field field-span">
+<label for="registerPassword2">Confirm password</label>
+<input id="registerPassword2" name="password2" type="password" autocomplete="new-password" minlength="8" maxlength="72" required>
+</div>
+</div>
+<div class="check">
+<input id="registerPrivacy" name="privacy" type="checkbox" required>
+<label for="registerPrivacy">I have read the privacy note.</label>
+</div>
+<div class="actions">
+<button type="submit" id="registerSubmit">Create my diary</button>
+</div>
+</form>
+<p class="switch-link"><a href="#login">Already registered? Log in</a></p>
+</section>
+
+<section class="view" id="viewDiary" data-title="Diary" hidden>
+<p id="backRow" hidden><a href="#staff">All trainees</a></p>
+<h2 id="diaryHeading">Practice diary</h2>
+<p id="diaryIdentity" class="identity"></p>
+<p id="editorNote" class="note" hidden></p>
+<p id="diaryError" class="error" role="alert" hidden></p>
+<div class="month-bar">
+<button type="button" id="prevMonth" class="secondary">Previous month</button>
+<div class="field">
+<label for="month">Month</label>
+<input id="month" type="month" min="2020-01" required>
+</div>
+<button type="button" id="nextMonth" class="secondary">Next month</button>
+</div>
+<details class="panel" id="detailsPanel">
+<summary id="detailsSummary">Your details</summary>
+<form id="detailsForm">
+<div class="details-grid">
+<div class="field">
+<label for="detailName">Full name</label>
+<input id="detailName" name="full_name" type="text" autocomplete="name" maxlength="120" required>
+</div>
+<div class="field">
+<label for="detailRank">Rank</label>
+<input id="detailRank" name="rank" type="text" autocomplete="off" maxlength="40" required>
+</div>
+<div class="field">
+<label for="detailSection">Section</label>
+<select id="detailSection" name="section_id" required></select>
+</div>
+<div class="field">
+<label for="detailInstrument">Instrument</label>
+<input id="detailInstrument" name="instrument" type="text" autocomplete="off" maxlength="80" required>
+</div>
+</div>
+<p id="detailEmail" class="note"></p>
+<div class="actions">
+<button type="submit">Save details</button>
+</div>
+<p id="detailsStatus" class="note" role="status"></p>
+<p id="detailsError" class="error" role="alert" hidden></p>
+</form>
+</details>
+<div class="diary-actions">
+<button type="button" id="pdfButton" class="secondary" hidden>Download PDF</button>
+<button type="button" id="deleteTraineeButton" class="danger" hidden>Delete trainee</button>
+</div>
+<div id="commentList"></div>
+</section>
+
+<section class="view" id="viewStaff" data-title="Trainees" hidden>
+<h2>Trainees</h2>
+<p class="lead">Open a diary to write the staff comments or download the month as a PDF. Any member of staff can write in any of the four staff boxes.</p>
+<p id="staffError" class="error" role="alert" hidden></p>
+<details class="panel" id="accountPanel">
+<summary>Your name on comments</summary>
+<form id="accountForm">
+<div class="details-grid">
+<div class="field">
+<label for="accountName">Full name</label>
+<input id="accountName" name="full_name" type="text" autocomplete="name" maxlength="120" required>
+</div>
+<div class="field">
+<label for="accountRank">Rank</label>
+<input id="accountRank" name="rank" type="text" autocomplete="off" maxlength="40">
+</div>
+</div>
+<p id="accountEmail" class="note"></p>
+<div class="actions">
+<button type="submit">Save name</button>
+</div>
+<p id="accountStatus" class="note" role="status"></p>
+</form>
+</details>
+<div class="filters">
+<div class="field">
+<label for="search">Search by name</label>
+<input id="search" type="search" autocomplete="off">
+</div>
+<div class="field">
+<label for="sectionFilter">Section</label>
+<select id="sectionFilter">
+<option value="">All sections</option>
+</select>
+</div>
+</div>
+<p id="traineeCount" class="note" role="status"></p>
+<div id="traineeResults"></div>
+<details class="panel" id="sectionsPanel">
+<summary>Sections</summary>
+<p class="note">Section 1, 2 and 3 are the starting list. Add or rename a section here. A section that still has trainees cannot be removed.</p>
+<ul class="section-list" id="sectionList"></ul>
+<form id="addSectionForm" class="section-add">
+<div class="field">
+<label for="newSection">New section</label>
+<input id="newSection" name="name" type="text" maxlength="40" required>
+</div>
+<button type="submit">Add section</button>
+</form>
+<p id="sectionStatus" class="note" role="status"></p>
+</details>
+</section>
+
+<section class="view" id="viewMissing" data-title="Not available" hidden>
+<h2>Page not available</h2>
+<p id="missingText">That page is not available for this account.</p>
+<p class="switch-link"><a href="#home">Back to the diary</a></p>
+</section>
+
+</main>
+
+<footer class="sheet-footer">
+<p>RMSM ITT Practice Diary<br>Initial Trade Training · Portsmouth</p>
+<p>No analytics. The diary stores only the details needed for training comments.</p>
+</footer>
+
+</div>
+
+<dialog id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+<h2 id="confirmTitle"></h2>
+<p id="confirmBody"></p>
+<div class="actions">
+<button type="button" class="secondary" id="confirmCancel">Cancel</button>
+<button type="button" id="confirmOk">Confirm</button>
+</div>
+</dialog>
+
+<p id="status" class="visually-hidden" role="status"></p>
+
+<noscript>
+<p class="noscript">JavaScript is turned off, so the diary cannot be opened. Turn JavaScript on, then reload this page.</p>
+</noscript>
+
+<script src="config.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="js/pdf.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

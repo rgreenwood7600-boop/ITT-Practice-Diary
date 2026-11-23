@@ -1,0 +1,7 @@
+node_modules/
+tests/local/node_modules/
+tests/output/
+tests/local/postgrest
+*.log
+.DS_Store
+.env
