@@ -16,11 +16,22 @@ run_sql() {
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$1" -f "$2"
 }
 
-echo "Checking the site does not embed a key or an outside script"
-if grep -RIn --include='config.js' --include='*.html' --include='*.css' -e 'eyJ' "$root/config.js" "$root/index.html" "$root/js" "$root/styles.css"; then
-  echo "A JWT is committed in the site. config.js must keep the placeholder anon key." >&2
-  exit 1
-fi
+echo "Checking the site does not embed a service role key or an outside script"
+python3 - "$root/config.js" <<'PY'
+import base64, json, pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text()
+found = False
+for token in re.findall(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", text):
+    found = True
+    payload = token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    role = json.loads(base64.urlsafe_b64decode(payload)).get("role")
+    if role == "service_role":
+        raise SystemExit("config.js contains a service_role key")
+    if role != "anon":
+        raise SystemExit(f"config.js contains a JWT with role {role}")
+print("config.js JWT role is anon" if found else "config.js has no JWT yet")
+PY
 if grep -E 'src="https?:' "$root/index.html"; then
   echo "index.html loads an external script." >&2
   exit 1

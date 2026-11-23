@@ -49,19 +49,19 @@
 </div>
 <div class="staff-entry">
 <h3>Staff</h3>
-<p>Accounts are created by the school. Staff cannot register themselves.</p>
+<p>Staff share one username. Staff cannot register themselves.</p>
 <a class="button secondary" href="#staff-login">Staff log in</a>
 </div>
 </section>
 
 <section class="view" id="viewLogin" data-title="Log in" hidden>
 <h2 id="loginHeading">Log in</h2>
-<p id="loginLead" class="lead">Trainees and staff sign in with the email and password for this diary.</p>
+<p id="loginLead" class="lead">Sign in with your username and password.</p>
 <p id="loginError" class="error" role="alert" hidden></p>
-<form id="loginForm">
-<div class="field">
-<label for="loginEmail">Email</label>
-<input id="loginEmail" name="email" type="email" autocomplete="username" maxlength="320" required>
+<form id="loginForm" data-mode="trainee">
+<div class="field" id="loginUsernameField">
+<label for="loginUsername">Username</label>
+<input id="loginUsername" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" required>
 </div>
 <div class="field">
 <label for="loginPassword">Password</label>
@@ -78,9 +78,9 @@
 
 <section class="view" id="viewRegister" data-title="Register" hidden>
 <h2>Register as a trainee</h2>
-<p class="lead">Registration is for trainees. It opens your own diary. Staff accounts are created separately and cannot be registered here.</p>
+<p class="lead">Registration is for trainees. It opens your own diary. Use a username, not an email address. Staff cannot register here.</p>
 <div class="privacy">
-<p>The diary stores your name, rank, section, instrument and email address, and the comments written each month. It does not ask for a service number. You can read your own diary. ITT staff can read it, write the staff comments, and update your details. There are no analytics on this page. The record is for Initial Trade Training at the Royal Military School of Music.</p>
+<p>The diary stores your name, rank, section, instrument and username, and the comments written each month. It does not ask for an email address or a service number. You can read your own diary. ITT staff can read it, write the staff comments, update your details, and set a new password for you. There are no analytics on this page. The record is for Initial Trade Training at the Royal Military School of Music.</p>
 </div>
 <p id="registerError" class="error" role="alert" hidden></p>
 <p id="registerNotice" class="notice" role="status" hidden></p>
@@ -103,8 +103,8 @@
 <input id="registerInstrument" name="instrument" type="text" autocomplete="off" maxlength="80" required>
 </div>
 <div class="field">
-<label for="registerEmail">Email</label>
-<input id="registerEmail" name="email" type="email" autocomplete="email" maxlength="320" required>
+<label for="registerUsername">Username</label>
+<input id="registerUsername" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="30" required>
 </div>
 <div class="field">
 <label for="registerPassword">Password</label>
@@ -161,12 +161,33 @@
 <input id="detailInstrument" name="instrument" type="text" autocomplete="off" maxlength="80" required>
 </div>
 </div>
-<p id="detailEmail" class="note"></p>
+<p id="detailUsername" class="note"></p>
 <div class="actions">
 <button type="submit">Save details</button>
 </div>
 <p id="detailsStatus" class="note" role="status"></p>
 <p id="detailsError" class="error" role="alert" hidden></p>
+</form>
+</details>
+<details class="panel" id="passwordPanel" hidden>
+<summary>Set a new password</summary>
+<form id="passwordForm">
+<p class="note" id="passwordNote"></p>
+<div class="details-grid">
+<div class="field">
+<label for="newPassword">New password</label>
+<input id="newPassword" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="72" required>
+</div>
+<div class="field">
+<label for="newPassword2">Confirm password</label>
+<input id="newPassword2" name="password2" type="password" autocomplete="new-password" minlength="8" maxlength="72" required>
+</div>
+</div>
+<div class="actions">
+<button type="submit" id="passwordSubmit">Save password</button>
+</div>
+<p id="passwordStatus" class="note" role="status"></p>
+<p id="passwordError" class="error" role="alert" hidden></p>
 </form>
 </details>
 <div class="diary-actions">
@@ -181,7 +202,7 @@
 <p class="lead">Open a diary to write the staff comments or download the month as a PDF. Any member of staff can write in any of the four staff boxes.</p>
 <p id="staffError" class="error" role="alert" hidden></p>
 <details class="panel" id="accountPanel">
-<summary>Your name on comments</summary>
+<summary>Name on staff comments</summary>
 <form id="accountForm">
 <div class="details-grid">
 <div class="field">
@@ -202,7 +223,7 @@
 </details>
 <div class="filters">
 <div class="field">
-<label for="search">Search by name</label>
+<label for="search">Search by name or username</label>
 <input id="search" type="search" autocomplete="off">
 </div>
 <div class="field">
