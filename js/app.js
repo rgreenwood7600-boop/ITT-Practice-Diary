@@ -1,4 +1,36 @@
 (function () {
+  var GRADE_OPTIONS = ["A", "A-", "B+", "B", "B-", "C"];
+  var GRADE_GROUPS = [
+    {
+      title: "Training Objectives",
+      items: [
+        { key: "to1_1_tech_ex", label: "TO1.1 Perform as a military soloist \u2013 Tech Ex" },
+        { key: "to1_1_ipe", label: "TO1.1 Perform as a military soloist \u2013 IPE" },
+        { key: "to2_1_gm", label: "TO2.1 Apply the academic principles of music \u2013 GM" },
+        { key: "to2_1_aural", label: "TO2.1 Apply aural perception" },
+        { key: "to3_1_equipment", label: "TO3.1 Maintain specialist equipment" },
+        { key: "to4_1_concert", label: "TO4.1 Perform in a concert band ensemble" },
+        { key: "to5_1_marching", label: "TO5.1 Perform in a marching band" },
+        { key: "to6_1_ethos", label: "TO6.1 Understand Corps ethos" }
+      ]
+    },
+    {
+      title: "Values and Standards",
+      items: [
+        { key: "motivation", label: "Motivation" },
+        { key: "work_ethic", label: "Work ethic" },
+        { key: "discipline", label: "Discipline" },
+        { key: "physical_training", label: "Physical Training" }
+      ]
+    },
+    {
+      title: "Overall Performance Grade",
+      items: [
+        { key: "opg", label: "Overall Performance Grade (OPG)" }
+      ]
+    }
+  ];
+
   var BOXES = [
     { type: "instrumental_professor", label: "Instrumental Professor", staff: true },
     { type: "academic_bandmaster", label: "Academic Bandmaster", staff: true },
@@ -487,8 +519,112 @@
       .order("sort_order");
     if (comments.error) throw comments.error;
     diary.comments = comments.data || [];
+    var grades = await state.client
+      .from("diary_grades")
+      .select("id, item_key, grade, sort_order")
+      .eq("diary_month_id", diary.monthId)
+      .order("sort_order");
+    if (grades.error) throw grades.error;
+    diary.grades = grades.data || [];
+    renderGrades();
     renderComments();
     announce(monthLabel(diary.year, diary.month) + " loaded");
+  }
+
+  function gradeRows() {
+    var byKey = {};
+    (state.diary.grades || []).forEach(function (row) { byKey[row.item_key] = row; });
+    return GRADE_GROUPS.map(function (group) {
+      return {
+        title: group.title,
+        items: group.items.map(function (item) {
+          return { key: item.key, label: item.label, row: byKey[item.key] || null };
+        })
+      };
+    });
+  }
+
+  function renderGrades() {
+    var host = $("gradeSections");
+    host.replaceChildren();
+    var editable = Boolean(state.me && state.me.is_staff);
+    gradeRows().forEach(function (group) {
+      var section = document.createElement("section");
+      section.className = "grade-block";
+      var heading = document.createElement("h3");
+      heading.textContent = group.title;
+      var table = document.createElement("table");
+      table.className = "grade-table";
+      var caption = document.createElement("caption");
+      caption.className = "visually-hidden";
+      caption.textContent = group.title;
+      var thead = document.createElement("thead");
+      var headRow = document.createElement("tr");
+      ["Description", "Grade"].forEach(function (label) {
+        var th = document.createElement("th");
+        th.scope = "col";
+        th.textContent = label;
+        headRow.append(th);
+      });
+      thead.append(headRow);
+      var tbody = document.createElement("tbody");
+      group.items.forEach(function (item) {
+        var tr = document.createElement("tr");
+        var description = document.createElement("td");
+        description.textContent = item.label;
+        var cell = document.createElement("td");
+        cell.className = "grade-cell";
+        var select = document.createElement("select");
+        select.setAttribute("aria-label", item.label + " grade");
+        var blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = "Select";
+        select.append(blank);
+        GRADE_OPTIONS.forEach(function (option) {
+          var choice = document.createElement("option");
+          choice.value = option;
+          choice.textContent = option;
+          select.append(choice);
+        });
+        select.value = item.row && item.row.grade ? item.row.grade : "";
+        select.disabled = !editable || !item.row;
+        var saved = document.createElement("span");
+        saved.className = "grade-saved";
+        saved.setAttribute("role", "status");
+        if (editable && item.row) {
+          select.addEventListener("change", function () {
+            saveGrade(item.row, select, saved);
+          });
+        }
+        cell.append(select, saved);
+        tr.append(description, cell);
+        tbody.append(tr);
+      });
+      table.append(caption, thead, tbody);
+      section.append(heading, table);
+      host.append(section);
+    });
+  }
+
+  async function saveGrade(row, select, saved) {
+    saved.textContent = "Saving\u2026";
+    select.disabled = true;
+    var result = await state.client
+      .from("diary_grades")
+      .update({ grade: select.value || null })
+      .eq("id", row.id)
+      .select("id, item_key, grade")
+      .single();
+    select.disabled = false;
+    if (result.error) {
+      saved.textContent = friendlyError(result.error);
+      select.value = row.grade || "";
+      return;
+    }
+    row.grade = result.data.grade;
+    var stored = state.diary.grades.find(function (item) { return item.id === row.id; });
+    if (stored) stored.grade = result.data.grade;
+    saved.textContent = "Saved";
   }
 
   function canEdit(box) {
@@ -819,6 +955,14 @@
         section: section,
         instrument: trainee.instrument,
         monthLabel: monthLabel(state.diary.year, state.diary.month),
+        gradeGroups: gradeRows().map(function (group) {
+          return {
+            title: group.title,
+            items: group.items.map(function (item) {
+              return { label: item.label, grade: item.row && item.row.grade ? item.row.grade : "" };
+            })
+          };
+        }),
         boxes: BOXES.map(function (box) {
           var comment = byType[box.type];
           return {

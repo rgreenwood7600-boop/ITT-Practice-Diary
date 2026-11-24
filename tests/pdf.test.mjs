@@ -25,6 +25,23 @@ function model(longText) {
     section: "Section 1",
     instrument: "Cornet",
     monthLabel: "November 2026",
+    gradeGroups: [
+      {
+        title: "Training Objectives",
+        items: [
+          { label: "TO1.1 Perform as a military soloist \u2013 Tech Ex", grade: "A-" },
+          { label: "TO1.1 Perform as a military soloist \u2013 IPE", grade: "" }
+        ]
+      },
+      {
+        title: "Values and Standards",
+        items: [{ label: "Motivation", grade: "B+" }]
+      },
+      {
+        title: "Overall Performance Grade",
+        items: [{ label: "Overall Performance Grade (OPG)", grade: "B" }]
+      }
+    ],
     boxes: [
       { label: "Instrumental Professor", text: "Scales are settling. Keep the articulation even in the second octave.", edited: "Last edited by Ben James \u00b7 23 Nov 2026, 14:05" },
       { label: "Academic Bandmaster", text: "Theory homework is complete. Listening notes need another pass.", edited: "Last edited by Ben James \u00b7 23 Nov 2026, 14:10" },
@@ -69,6 +86,12 @@ for (const phrase of [
   "Section Commander",
   "Senior Instructor",
   "Trainee",
+  "Training Objectives",
+  "TO1.1 Perform as a military soloist",
+  "Tech Ex",
+  "Values and Standards",
+  "Motivation",
+  "Overall Performance Grade",
   "Scales are settling",
   "Page 1 of"
 ]) {

@@ -353,6 +353,58 @@ summary:focus-visible,
     margin: 0 0 16px;
 }
 
+.grade-block {
+    margin: 0 0 18px;
+}
+
+.grade-block h3 {
+    margin: 0 0 8px;
+    color: var(--navy);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.grade-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.grade-table th,
+.grade-table td {
+    border-bottom: 1px solid var(--line);
+    padding: 8px 8px 8px 0;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.grade-table th {
+    color: var(--navy);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.grade-table td.grade-cell {
+    width: 8.5rem;
+    text-align: right;
+}
+
+.grade-table select:disabled {
+    background: #f4f7fa;
+    color: var(--ink);
+}
+
+.grade-saved {
+    display: block;
+    margin-top: 4px;
+    color: var(--navy);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: right;
+}
+
 .comment {
     border: 1px solid var(--line);
     border-top: 3px solid var(--navy);

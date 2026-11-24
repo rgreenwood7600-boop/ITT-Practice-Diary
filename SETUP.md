@@ -91,6 +91,10 @@ where email = 'ittprof@staff.itt-diary.invalid';
 
 Do not set `is_staff` on that account.
 
+### Monthly grades
+
+Run `supabase/migrations/004_monthly_grades.sql` before using the grade tables. Each month then has the Training Objectives, Values and Standards, and Overall Performance Grade from the Monthly Trainee Assessment Form. Only the full staff login can set those grades. Professors and the trainee can read them. The grades are included on the PDF.
+
 ### Change the staff password
 
 Open **Authentication → Users**, select `ittstaff@staff.itt-diary.invalid`, and set the new password on that user. Do not send a recovery email. This address cannot receive mail, so a reset link would never arrive. If the dashboard button only offers to email a link, set the password from the user page itself (the password field on the user) rather than by email.
