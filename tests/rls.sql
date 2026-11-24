@@ -208,6 +208,20 @@ begin
     raise exception 'Trainee A can see % comments; expected the 5 boxes on their own month', n;
   end if;
 
+  select count(*) into n from public.diary_grades;
+  if n <> 13 then
+    raise exception 'Trainee A can see % grades; expected the 13 rows on their own month', n;
+  end if;
+
+  update public.diary_grades
+  set grade = 'A'
+  where item_key = 'opg'
+    and diary_month_id = current_setting('itt.month_a')::uuid;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'Trainee A set a grade';
+  end if;
+
   select count(*) into n
   from public.profiles
   where id = current_setting('itt.trainee_b')::uuid;
@@ -522,6 +536,21 @@ begin
     raise exception 'Professor can see % comment boxes', n;
   end if;
 
+  select count(*) into n from public.diary_grades
+  where diary_month_id = current_setting('itt.month_a')::uuid;
+  if n <> 13 then
+    raise exception 'Professor can see % grades', n;
+  end if;
+
+  update public.diary_grades
+  set grade = 'C'
+  where item_key = 'opg'
+    and diary_month_id = current_setting('itt.month_a')::uuid;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'Professor set a grade';
+  end if;
+
   update public.diary_comments
   set body = 'Tone is developing.'
   where box_type = 'instrumental_professor'
@@ -624,6 +653,50 @@ update public.diary_comments
 set body = 'Scales are settling.'
 where box_type = 'instrumental_professor'
   and diary_month_id = current_setting('itt.month_a')::uuid;
+
+update public.diary_grades
+set grade = 'A-'
+where item_key = 'to1_1_tech_ex'
+  and diary_month_id = current_setting('itt.month_a')::uuid;
+
+do $$
+declare
+  n int;
+  editor text;
+begin
+  select count(*) into n
+  from public.diary_grades
+  where item_key = 'to1_1_tech_ex'
+    and diary_month_id = current_setting('itt.month_a')::uuid
+    and grade = 'A-'
+    and last_edited_name = 'Ben James';
+  if n <> 1 then
+    raise exception 'Staff grade was not stored';
+  end if;
+
+  begin
+    update public.diary_grades
+    set grade = 'D'
+    where item_key = 'opg'
+      and diary_month_id = current_setting('itt.month_a')::uuid;
+    raise exception 'An invalid grade was accepted';
+  exception
+    when others then
+      if sqlerrm ilike '%grade%' or sqlerrm ilike '%check%' then
+        null;
+      else
+        raise;
+      end if;
+  end;
+
+  select last_edited_name into editor
+  from public.diary_grades
+  where item_key = 'opg'
+    and diary_month_id = current_setting('itt.month_a')::uuid;
+  if editor is not null then
+    raise exception 'Invalid grade attempt stamped the OPG as %', editor;
+  end if;
+end $$;
 
 select public.set_trainee_password(current_setting('itt.trainee_a')::uuid, 'New-password-1');
 

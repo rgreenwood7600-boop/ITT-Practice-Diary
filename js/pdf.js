@@ -134,6 +134,40 @@
     rule(y, NAVY, 0.3);
     y += 8;
 
+    function drawGradeTable(title, items) {
+      ensure(14);
+      doc.setFont("LiberationSans", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+      text(title, MARGIN_X, y);
+      y += 4;
+      rule(y, GOLD, 0.4);
+      y += 5;
+      (items || []).forEach(function (item) {
+        doc.setFont("LiberationSans", "normal");
+        doc.setFontSize(9);
+        var lines = doc.splitTextToSize(item.label, PAGE_W - MARGIN_X * 2 - 22);
+        ensure(lines.length * 4.2 + 1.5);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.text(lines, MARGIN_X, y);
+        doc.setFont("LiberationSans", "bold");
+        doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+        text(item.grade || "\u2014", PAGE_W - MARGIN_X, y, { align: "right" });
+        y += lines.length * 4.2 + 1.2;
+      });
+      y += 3;
+    }
+
+    (model.gradeGroups || []).forEach(function (group) {
+      drawGradeTable(group.title, group.items);
+    });
+
+    if ((model.gradeGroups || []).length) {
+      y += 1;
+      rule(y, NAVY, 0.3);
+      y += 8;
+    }
+
     (model.boxes || []).forEach(function (box) {
       var body = box.text && String(box.text).trim()
         ? String(box.text).replace(/\r\n/g, "\n")
