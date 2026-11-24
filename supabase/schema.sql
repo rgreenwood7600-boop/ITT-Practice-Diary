@@ -31,6 +31,7 @@ create table if not exists public.profiles (
   instrument text not null default '',
   email text not null default '',
   username text,
+  role text not null default 'trainee',
   is_staff boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -40,7 +41,8 @@ create table if not exists public.profiles (
   constraint profiles_email_len check (char_length(email) <= 320),
   constraint profiles_username_format check (
     username is null or username ~ '^[a-z][a-z0-9]{2,29}$'
-  )
+  ),
+  constraint profiles_role_check check (role in ('trainee', 'staff', 'professor'))
 );
 
 create table if not exists public.diary_months (
@@ -105,6 +107,34 @@ end $$;
 create unique index if not exists profiles_username_lower_idx
   on public.profiles (lower(username))
   where username is not null;
+
+alter table public.profiles add column if not exists role text;
+
+update public.profiles
+set role = case when is_staff then 'staff' else 'trainee' end
+where role is null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'profiles_role_check'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+      add constraint profiles_role_check
+      check (role in ('trainee', 'staff', 'professor'));
+  end if;
+end $$;
+
+alter table public.profiles alter column role set default 'trainee';
+
+do $$
+begin
+  if not exists (select 1 from public.profiles where role is null) then
+    alter table public.profiles alter column role set not null;
+  end if;
+end $$;
 create unique index if not exists sections_name_lower_idx
   on public.sections (lower(name));
 
@@ -137,6 +167,26 @@ $$;
 revoke all on function private.is_staff() from public;
 grant execute on function private.is_staff() to authenticated;
 
+create or replace function private.is_professor()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select p.role = 'professor' and p.is_staff = false
+      from public.profiles p
+      where p.id = auth.uid()
+    ),
+    false
+  );
+$$;
+
+revoke all on function private.is_professor() from public;
+grant execute on function private.is_professor() to authenticated;
+
 create or replace function public.ensure_diary_month(
   p_trainee uuid,
   p_year integer,
@@ -165,7 +215,9 @@ begin
 
   -- Same error for a missing id and for someone else's id, so a trainee
   -- cannot use this function to discover other accounts.
-  if p_trainee is distinct from auth.uid() and not private.is_staff() then
+  if p_trainee is distinct from auth.uid()
+     and not private.is_staff()
+     and not private.is_professor() then
     raise exception 'You cannot open another trainee diary';
   end if;
 
@@ -173,7 +225,7 @@ begin
     select 1
     from public.profiles p
     where p.id = p_trainee
-      and p.is_staff = false
+      and p.role = 'trainee'
   ) then
     raise exception 'Diary months belong to trainees';
   end if;
@@ -221,7 +273,7 @@ begin
     select 1
     from public.profiles p
     where p.id = p_trainee
-      and p.is_staff = false
+      and p.role = 'trainee'
   ) then
     raise exception 'Trainee not found';
   end if;
@@ -270,7 +322,7 @@ begin
     select 1
     from public.profiles p
     where p.id = p_trainee
-      and p.is_staff = false
+      and p.role = 'trainee'
   ) then
     raise exception 'Trainee not found';
   end if;
@@ -339,7 +391,7 @@ begin
     if v_username is null or v_username !~ '^[a-z][a-z0-9]{2,29}$' then
       raise exception 'Use 3 to 30 letters and numbers, starting with a letter';
     end if;
-    if v_username = 'ittstaff' then
+    if v_username in ('ittstaff', 'ittprof') then
       raise exception 'That username is reserved';
     end if;
     if lower(coalesce(new.email, '')) is distinct from v_username || '@trainee.itt-diary.invalid' then
@@ -351,7 +403,7 @@ begin
   end if;
 
   insert into public.profiles (
-    id, full_name, rank, section_id, instrument, email, username, is_staff
+    id, full_name, rank, section_id, instrument, email, username, role, is_staff
   )
   values (
     new.id,
@@ -361,6 +413,7 @@ begin
     v_instrument,
     coalesce(new.email, ''),
     v_username,
+    'trainee',
     false
   );
 
@@ -403,9 +456,22 @@ begin
     raise exception 'Instrument is too long';
   end if;
 
+  if auth.uid() is null then
+    if new.role is null or new.role not in ('trainee', 'staff', 'professor') then
+      new.role := case when new.is_staff then 'staff' else 'trainee' end;
+    end if;
+    if new.is_staff and new.role = 'trainee' then
+      new.role := 'staff';
+    end if;
+    if not new.is_staff and new.role = 'staff' then
+      new.role := 'trainee';
+    end if;
+  end if;
+
   if tg_op = 'INSERT' then
     if auth.uid() is not null then
       new.is_staff := false;
+      new.role := 'trainee';
     end if;
     new.created_at := coalesce(new.created_at, now());
     new.updated_at := now();
@@ -421,6 +487,9 @@ begin
     end if;
     if new.username is distinct from old.username then
       raise exception 'The username cannot be changed here';
+    end if;
+    if new.role is distinct from old.role then
+      raise exception 'Role can only be changed from the Supabase SQL editor';
     end if;
     if new.id is distinct from old.id then
       raise exception 'The account id cannot be changed';
@@ -591,8 +660,14 @@ create policy profiles_update_own
   on public.profiles
   for update
   to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid());
+  using (id = auth.uid() and not private.is_professor())
+  with check (id = auth.uid() and not private.is_professor());
+
+create policy profiles_select_professor
+  on public.profiles
+  for select
+  to authenticated
+  using (private.is_professor());
 
 create policy profiles_update_staff
   on public.profiles
@@ -613,6 +688,12 @@ create policy diary_months_select_staff
   to authenticated
   using (private.is_staff());
 
+create policy diary_months_select_professor
+  on public.diary_months
+  for select
+  to authenticated
+  using (private.is_professor());
+
 create policy diary_comments_select_own
   on public.diary_comments
   for select
@@ -631,6 +712,12 @@ create policy diary_comments_select_staff
   for select
   to authenticated
   using (private.is_staff());
+
+create policy diary_comments_select_professor
+  on public.diary_comments
+  for select
+  to authenticated
+  using (private.is_professor());
 
 create policy diary_comments_update_trainee
   on public.diary_comments
@@ -678,6 +765,19 @@ create policy diary_comments_update_staff
     )
   );
 
+create policy diary_comments_update_professor
+  on public.diary_comments
+  for update
+  to authenticated
+  using (
+    private.is_professor()
+    and box_type = 'instrumental_professor'
+  )
+  with check (
+    private.is_professor()
+    and box_type = 'instrumental_professor'
+  );
+
 -- ---------------------------------------------------------------------------
 -- Grants. Column grants sit on top of the policies: the API role cannot
 -- update is_staff, email, or the comment stamp even if a policy is widened.
@@ -712,6 +812,7 @@ begin
     grant all privileges on all functions in schema public to service_role;
     grant usage on schema private to service_role;
     grant execute on function private.is_staff() to service_role;
+    grant execute on function private.is_professor() to service_role;
   end if;
 end $$;
 

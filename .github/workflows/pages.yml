@@ -3,6 +3,7 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -15,7 +16,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare site
+        run: |
+          mkdir -p _site/js _site/vendor
+          cp index.html config.js styles.css _site/
+          cp js/*.js _site/js/
+          cp vendor/* _site/vendor/
+          test -f _site/index.html
+          test -f _site/js/app.js
+          test -f _site/config.js
+
   deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: check
     runs-on: ubuntu-latest
     environment:
       name: github-pages

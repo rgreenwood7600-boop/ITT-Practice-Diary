@@ -104,6 +104,8 @@
 
   var STAFF_USERNAME = "ittstaff";
   var STAFF_EMAIL = "ittstaff@staff.itt-diary.invalid";
+  var PROFESSOR_USERNAME = "ittprof";
+  var PROFESSOR_EMAIL = "ittprof@staff.itt-diary.invalid";
 
   function normaliseUsername(value) {
     return String(value || "").trim().toLowerCase();
@@ -113,14 +115,26 @@
     if (!/^[a-z][a-z0-9]{2,29}$/.test(username)) {
       return "Use 3 to 30 letters and numbers, starting with a letter.";
     }
-    if (username === STAFF_USERNAME) return "That username is reserved.";
+    if (username === STAFF_USERNAME || username === PROFESSOR_USERNAME) return "That username is reserved.";
     return "";
   }
 
   function loginEmailFor(username, staffMode) {
-    if (staffMode) return username === STAFF_USERNAME ? STAFF_EMAIL : "";
+    if (staffMode) {
+      if (username === STAFF_USERNAME) return STAFF_EMAIL;
+      if (username === PROFESSOR_USERNAME) return PROFESSOR_EMAIL;
+      return "";
+    }
     if (usernameProblem(username)) return "";
     return username + "@trainee.itt-diary.invalid";
+  }
+
+  function isProfessorAccount() {
+    return Boolean(state.me && state.me.role === "professor" && !state.me.is_staff);
+  }
+
+  function canOpenStaffList() {
+    return Boolean(state.me && (state.me.is_staff || state.me.role === "professor"));
   }
 
   function editorName(name) {
@@ -157,6 +171,10 @@
       return;
     }
     bar.hidden = false;
+    if (isProfessorAccount()) {
+      $("sessionWho").textContent = "Instrumental Professor";
+      return;
+    }
     if (state.me.is_staff) {
       $("sessionWho").textContent = editorName(state.me.full_name);
       return;
@@ -211,7 +229,7 @@
   async function loadMe() {
     var result = await state.client
       .from("profiles")
-      .select("id, full_name, rank, section_id, instrument, username, is_staff")
+      .select("id, full_name, rank, section_id, instrument, username, role, is_staff")
       .eq("id", state.session.user.id)
       .single();
     if (result.error) throw result.error;
@@ -220,7 +238,7 @@
   }
 
   function homeHash() {
-    return state.me && state.me.is_staff ? "#staff" : "#diary";
+    return canOpenStaffList() ? "#staff" : "#diary";
   }
 
   async function ensureSession() {
@@ -308,7 +326,7 @@
       }
 
       if (where.name === "diary") {
-        if (state.me.is_staff) {
+        if (canOpenStaffList()) {
           location.hash = "#staff";
           return;
         }
@@ -317,7 +335,7 @@
       }
 
       if (where.name === "staff") {
-        if (!state.me.is_staff) {
+        if (!canOpenStaffList()) {
           location.hash = "#diary";
           return;
         }
@@ -326,7 +344,7 @@
       }
 
       if (where.name === "staff-diary") {
-        if (!state.me.is_staff) {
+        if (!canOpenStaffList()) {
           location.hash = "#diary";
           return;
         }
@@ -347,7 +365,7 @@
     $("loginForm").dataset.mode = staff ? "staff" : "trainee";
     $("loginHeading").textContent = staff ? "Staff log in" : "Log in";
     $("loginLead").textContent = staff
-      ? "Use the shared staff username and password. Staff registration is not available."
+      ? "Use the shared staff or instrumental professor username and password. These accounts cannot be registered here."
       : "Sign in with your username and password.";
     $("loginUsername").required = true;
     $("loginRegisterWrap").hidden = staff;
@@ -381,11 +399,11 @@
     await loadSections();
     var result = await state.client
       .from("profiles")
-      .select("id, full_name, rank, section_id, instrument, username, is_staff, sections(name)")
+      .select("id, full_name, rank, section_id, instrument, username, role, is_staff, sections(name)")
       .eq("id", traineeId)
       .single();
     if (result.error) throw result.error;
-    if (!result.data || result.data.is_staff) {
+    if (!result.data || result.data.role !== "trainee") {
       showView("viewMissing");
       $("missingText").textContent = "That diary is not available.";
       return;
@@ -399,11 +417,13 @@
       monthId: null,
       comments: []
     };
-    var staffView = state.me.is_staff && state.me.id !== result.data.id;
+    var professor = isProfessorAccount();
+    var staffView = canOpenStaffList() && state.me.id !== result.data.id;
     $("backRow").hidden = !staffView;
-    $("pdfButton").hidden = !state.me.is_staff;
-    $("deleteTraineeButton").hidden = !staffView;
-    $("passwordPanel").hidden = !staffView;
+    $("pdfButton").hidden = !(state.me.is_staff || professor);
+    $("deleteTraineeButton").hidden = !(state.me.is_staff && staffView);
+    $("passwordPanel").hidden = !(state.me.is_staff && staffView);
+    $("detailsPanel").hidden = professor;
     $("passwordNote").textContent = staffView
       ? "This replaces the password for " + (result.data.username || "this trainee") + ". The username stays the same."
       : "";
@@ -413,7 +433,9 @@
     showError($("passwordError"), "");
     $("detailsSummary").textContent = staffView ? "Edit trainee details" : "Your details";
     $("editorNote").hidden = false;
-    $("editorNote").textContent = state.me.is_staff
+    $("editorNote").textContent = professor
+      ? "You can read every box and download this month. You can write only in the Instrumental Professor box."
+      : state.me.is_staff
       ? "Any member of staff can write in the four staff boxes. The Trainee box belongs to the trainee. Saving stamps the shared staff name."
       : "You can read every box. Only the Trainee box is yours to write.";
     $("diaryHeading").textContent = staffView ? "Practice diary" : "Your practice diary";
@@ -471,6 +493,7 @@
 
   function canEdit(box) {
     if (!state.me || !state.diary) return false;
+    if (isProfessorAccount()) return box.type === "instrumental_professor";
     if (box.type === "trainee") return !state.me.is_staff && state.me.id === state.diary.trainee.id;
     return state.me.is_staff && box.staff;
   }
@@ -624,11 +647,16 @@
     $("accountName").value = state.me.full_name === "New account" ? "" : state.me.full_name;
     $("accountRank").value = state.me.rank || "";
     $("accountEmail").textContent = "This login is shared. Diaries show this name on staff comments. Set it to ITT Staff.";
+    $("accountPanel").hidden = isProfessorAccount();
+    $("sectionsPanel").hidden = isProfessorAccount();
+    $("staffLead").textContent = isProfessorAccount()
+      ? "You can open any diary, read every box, write only the Instrumental Professor box, and download a PDF."
+      : "Open a diary to write the staff comments or download the month as a PDF. Any member of staff can write in any of the four staff boxes.";
     if (state.me.full_name === "New account") $("accountPanel").open = true;
     var result = await state.client
       .from("profiles")
-      .select("id, full_name, rank, section_id, instrument, username, sections(name, sort_order)")
-      .eq("is_staff", false)
+      .select("id, full_name, rank, section_id, instrument, username, role, sections(name, sort_order)")
+      .eq("role", "trainee")
       .order("full_name");
     if (result.error) throw result.error;
     state.trainees = result.data || [];
@@ -968,7 +996,7 @@
         .from("profiles")
         .update(payload)
         .eq("id", trainee.id)
-        .select("id, full_name, rank, section_id, instrument, username, is_staff, sections(name)")
+        .select("id, full_name, rank, section_id, instrument, username, role, is_staff, sections(name)")
         .single();
       if (result.error) {
         showError($("detailsError"), friendlyError(result.error));
@@ -990,7 +1018,7 @@
           rank: $("accountRank").value.trim()
         })
         .eq("id", state.me.id)
-        .select("id, full_name, rank, section_id, instrument, username, is_staff")
+        .select("id, full_name, rank, section_id, instrument, username, role, is_staff")
         .single();
       if (result.error) {
         $("accountStatus").textContent = friendlyError(result.error);

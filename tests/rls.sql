@@ -118,6 +118,29 @@ exception
     end if;
 end $$;
 
+do $$
+begin
+  insert into auth.users (email, raw_user_meta_data)
+  values (
+    'ittprof@trainee.itt-diary.invalid',
+    jsonb_build_object(
+      'username', 'ittprof',
+      'full_name', 'Reserved Professor',
+      'rank', 'Musn',
+      'instrument', 'Horn',
+      'section_id', (select id::text from public.sections where name = 'Section 1')
+    )
+  );
+  raise exception 'The reserved professor username was accepted';
+exception
+  when others then
+    if sqlerrm ilike '%reserved%' then
+      null;
+    else
+      raise;
+    end if;
+end $$;
+
 select set_config('itt.trainee_a', (select id::text from public.profiles where email = 'alexriver@trainee.itt-diary.invalid'), false);
 select set_config('itt.trainee_b', (select id::text from public.profiles where email = 'samquinn@trainee.itt-diary.invalid'), false);
 select set_config('itt.staff', (select id::text from public.profiles where email = 'ben.james@example.test'), false);
@@ -135,6 +158,18 @@ set is_staff = true,
     full_name = 'Ben James',
     rank = ''
 where email = 'ben.james@example.test';
+
+insert into auth.users (email, raw_user_meta_data)
+values ('ittprof@staff.itt-diary.invalid', '{}'::jsonb);
+
+update public.profiles
+set role = 'professor',
+    full_name = 'Instrumental Professor',
+    username = 'ittprof',
+    rank = ''
+where email = 'ittprof@staff.itt-diary.invalid';
+
+select set_config('itt.professor', (select id::text from public.profiles where email = 'ittprof@staff.itt-diary.invalid'), false);
 
 create or replace function public._test_become(p_user uuid)
 returns void
@@ -458,6 +493,137 @@ exception
       raise;
     end if;
 end $$;
+
+-- Professors can read diaries and write only the Instrumental Professor box.
+select public._test_become(current_setting('itt.professor')::uuid);
+
+do $$
+declare
+  n int;
+  body text;
+  editor text;
+begin
+  if (select role from public.profiles where id = auth.uid()) is distinct from 'professor' then
+    raise exception 'Professor profile role was not professor';
+  end if;
+  if (select is_staff from public.profiles where email = 'ben.james@example.test') is not true
+     or (select role from public.profiles where email = 'ben.james@example.test') is distinct from 'staff' then
+    raise exception 'Full staff lost is_staff or the staff role';
+  end if;
+
+  select count(*) into n from public.profiles where role = 'trainee';
+  if n < 2 then
+    raise exception 'Professor can see % trainees', n;
+  end if;
+
+  select count(*) into n from public.diary_comments
+  where diary_month_id = current_setting('itt.month_a')::uuid;
+  if n <> 5 then
+    raise exception 'Professor can see % comment boxes', n;
+  end if;
+
+  update public.diary_comments
+  set body = 'Tone is developing.'
+  where box_type = 'instrumental_professor'
+    and diary_month_id = current_setting('itt.month_a')::uuid;
+  get diagnostics n = row_count;
+  if n <> 1 then
+    raise exception 'Professor could not write the instrumental box (% rows)', n;
+  end if;
+
+  select c.body, c.last_edited_name into body, editor
+  from public.diary_comments c
+  where c.box_type = 'instrumental_professor'
+    and c.diary_month_id = current_setting('itt.month_a')::uuid;
+  if body is distinct from 'Tone is developing.' or editor is distinct from 'Instrumental Professor' then
+    raise exception 'Instrumental box is "%" by %', body, editor;
+  end if;
+
+  update public.diary_comments
+  set body = 'professor should not write here'
+  where box_type = 'academic_bandmaster'
+    and diary_month_id = current_setting('itt.month_a')::uuid;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'Professor wrote in the academic box';
+  end if;
+
+  update public.diary_comments
+  set body = 'professor should not write the trainee box'
+  where box_type = 'trainee'
+    and diary_month_id = current_setting('itt.month_a')::uuid;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'Professor wrote in the trainee box';
+  end if;
+
+  update public.profiles
+  set full_name = 'Changed by professor'
+  where id = current_setting('itt.trainee_a')::uuid;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'Professor edited a trainee profile';
+  end if;
+
+  update public.profiles
+  set full_name = 'Professor renamed'
+  where id = auth.uid();
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'Professor edited their own profile';
+  end if;
+end $$;
+
+do $$
+begin
+  perform public.delete_trainee(current_setting('itt.trainee_a')::uuid);
+  raise exception 'Professor deleted a trainee';
+exception
+  when others then
+    if sqlerrm ilike '%Only staff%' then
+      null;
+    else
+      raise;
+    end if;
+end $$;
+
+do $$
+begin
+  perform public.set_trainee_password(current_setting('itt.trainee_a')::uuid, 'Professor-password-1');
+  raise exception 'Professor set a trainee password';
+exception
+  when others then
+    if sqlerrm ilike '%Only staff%' then
+      null;
+    else
+      raise;
+    end if;
+end $$;
+
+do $$
+begin
+  insert into public.sections (name, sort_order) values ('Professor section', 9);
+  raise exception 'Professor added a section';
+exception
+  when insufficient_privilege then
+    null;
+  when others then
+    if sqlerrm ilike '%row-level security%' or sqlerrm ilike '%permission denied%' then
+      null;
+    else
+      raise;
+    end if;
+end $$;
+
+select public.ensure_diary_month(current_setting('itt.trainee_b')::uuid, 2026, 1);
+
+-- Restore the staff stamp the later trainee assertion expects.
+select public._test_become(current_setting('itt.staff')::uuid);
+
+update public.diary_comments
+set body = 'Scales are settling.'
+where box_type = 'instrumental_professor'
+  and diary_month_id = current_setting('itt.month_a')::uuid;
 
 select public.set_trainee_password(current_setting('itt.trainee_a')::uuid, 'New-password-1');
 
