@@ -69,11 +69,27 @@ where email = 'ittstaff@staff.itt-diary.invalid';
 
 Run `supabase/migrations/002_usernames.sql` in the SQL editor before using this version of the page. It adds the username column, keeps usernames unique, and adds the staff password reset. It is safe to run more than once.
 
-Trainees choose a username of 3 to 30 letters and numbers, starting with a letter. The page stores it in lower case and signs them in as `<username>@trainee.itt-diary.invalid`. That address is never shown and cannot receive mail. `ittstaff` is reserved.
+Trainees choose a username of 3 to 30 letters and numbers, starting with a letter. The page stores it in lower case and signs them in as `<username>@trainee.itt-diary.invalid`. That address is never shown and cannot receive mail. `ittstaff` and `ittprof` are reserved.
 
 On a trainee's diary, staff can set a new password. That calls `set_trainee_password`, which checks the caller is staff and then writes a bcrypt password onto the trainee's login. The service role key is not used.
 
 Anyone who signs in with the username `ITTStaff` can write in any of the four staff boxes.
+
+### Instrumental professor login
+
+There is one more shared username, `ittprof`, for instrumental professors. It uses the same staff log-in page. The hidden address is `ittprof@staff.itt-diary.invalid`. Professors can read every diary and write only the Instrumental Professor box. They cannot change trainee details, sections, passwords, or delete a trainee.
+
+Run `supabase/migrations/003_professor_role.sql` in the SQL editor before publishing that page. It keeps every `is_staff` account as full staff. Then create the auth user (auto confirm) and promote the profile:
+
+```sql
+update public.profiles
+set role = 'professor',
+    full_name = 'Instrumental Professor',
+    username = 'ittprof'
+where email = 'ittprof@staff.itt-diary.invalid';
+```
+
+Do not set `is_staff` on that account.
 
 ### Change the staff password
 
